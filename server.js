@@ -82,9 +82,9 @@ app.post("/submit-form", async (req, res) => {
     });
   }
 });
-// app.get("/", (req, res) => {
-//   res.send("Server running");
-// });
+app.get("/", (req, res) => {
+  res.send("Server running");
+});
 
 
 app.get("/check-tag/:tagId", async (req, res) => {
