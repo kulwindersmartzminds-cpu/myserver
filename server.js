@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 app.post("/submit-form", async (req, res) => {
-  const { name, email, phone, address, petname } = req.body;
+  const { tagId, name, email, phone, address, petname } = req.body;
 
   try {
     const response = await fetch(
@@ -29,6 +29,10 @@ app.post("/submit-form", async (req, res) => {
                 metaobject: {
                   type: "contact_form"
                   fields: [
+                    {
+                      key: "tag_id"
+                      value: "${tagId}"
+                    }
                     {
                       key: "name"
                       value: "${name}"
