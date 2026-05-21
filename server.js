@@ -82,12 +82,94 @@ app.post("/submit-form", async (req, res) => {
     });
   }
 });
-app.get("/", (req, res) => {
-  res.send("Server running");
-});
-// app.listen(PORT, () => {
-//   console.log(`Server running on ${PORT}`);
+// app.get("/", (req, res) => {
+//   res.send("Server running");
 // });
+
+
+app.get("/check-tag/:tagId", async (req, res) => {
+
+  const { tagId } = req.params;
+
+  try {
+
+    const response = await fetch(
+      `https://${process.env.SHOPIFY_STORE}/admin/api/2025-01/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token":
+            process.env.SHOPIFY_ACCESS_TOKEN,
+        },
+        body: JSON.stringify({
+          query: `
+          {
+            metaobjects(type: "contact_form", first: 50) {
+              edges {
+                node {
+                  fields {
+                    key
+                    value
+                  }
+                }
+              }
+            }
+          }
+          `
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    const items = result.data.metaobjects.edges;
+
+    const found = items.find((item) => {
+
+      return item.node.fields.some(
+        (field) =>
+          field.key === "tag_id" &&
+          field.value === tagId
+      );
+
+    });
+
+
+    // MATCH MIL GAYA
+    if (found) {
+
+      const data = {};
+
+      found.node.fields.forEach((field) => {
+        data[field.key] = field.value;
+      });
+
+      return res.json({
+        found: true,
+        data
+      });
+
+    }
+
+
+    // MATCH NAHI MILA
+    res.json({
+      found: false
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+
 
 
 app.listen(PORT, "0.0.0.0", () => {
