@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 app.post("/submit-form", async (req, res) => {
-  const { tagId, name, email, phone, address, petname } = req.body;
+  const { tagId, name, email, password, phone, address, petname } = req.body;
 
   try {
     const response = await fetch(
@@ -40,6 +40,10 @@ app.post("/submit-form", async (req, res) => {
                     {
                       key: "email"
                       value: "${email}"
+                    }
+                    { 
+                    key: "password"
+                    value: "${password}"
                     }
                     {
                       key: "phone"
@@ -151,8 +155,6 @@ app.get("/check-tag/:tagId", async (req, res) => {
       });
 
     }
-
-
     // MATCH NAHI MILA
     res.json({
       found: false
@@ -167,10 +169,6 @@ app.get("/check-tag/:tagId", async (req, res) => {
   }
 
 });
-
-
-
-
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on ${PORT}`);
