@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import prcy from "bcrypt";
 const PORT = process.env.PORT || 5000;
 dotenv.config();
 
@@ -11,6 +12,8 @@ app.use(express.json());
 
 app.post("/submit-form", async (req, res) => {
   const { tagId, name, email, password, phone, address, petname } = req.body;
+
+  const hashedPassword = await prcy.hash(password, 10);
 
   try {
     const response = await fetch(
@@ -43,7 +46,7 @@ app.post("/submit-form", async (req, res) => {
                     }
                     { 
                     key: "password"
-                    value: "${password}"
+                    value: "${hashedPassword}"
                     }
                     {
                       key: "phone"
