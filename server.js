@@ -32,7 +32,7 @@ async function shopifyQuery(query) {
 
 
 // ======================
-// TAG ID SE RECORD DHUNDO (id bhi return karo)
+// TAG ID SE RECORD DHUNDO
 // ======================
 async function findRecordByTagId(tagId) {
   const result = await shopifyQuery(`
@@ -83,13 +83,8 @@ app.get("/check-tag/:tagId", async (req, res) => {
 
   try {
     const record = await findRecordByTagId(tagId);
-
-    if (record) {
-      return res.json({ found: true, data: record });
-    }
-
+    if (record) return res.json({ found: true, data: record });
     res.json({ found: false });
-
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: error.message });
@@ -115,22 +110,18 @@ app.post("/verify-edit", async (req, res) => {
       return res.json({ success: false, message: "Tag ID nahi mila" });
     }
 
-    // Email check
     if (record.email !== email) {
       return res.json({ success: false, message: "Email ya password galat hai" });
     }
 
-    // Password bcrypt compare
     const passwordMatch = await bcrypt.compare(password, record.password);
-
     if (!passwordMatch) {
       return res.json({ success: false, message: "Email ya password galat hai" });
     }
 
-    // Success — metaobject ID bhi bhejo taaki update ho sake
     return res.json({
       success: true,
-      metaobjectId: record._id,   // <-- yeh ID frontend save karega
+      metaobjectId: record._id,
       user: {
         name: record.name || "",
         email: record.email || "",
@@ -148,19 +139,32 @@ app.post("/verify-edit", async (req, res) => {
 
 
 // ======================
-// SUBMIT FORM  (create ya update dono handle karta hai)
+// SUBMIT FORM (create + update)
 // ======================
 app.post("/submit-form", async (req, res) => {
   const { tagId, name, email, password, phone, address, petname, metaobjectId } = req.body;
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     let result;
 
     if (metaobjectId) {
       // ---- UPDATE existing record ----
       console.log("Updating metaobject:", metaobjectId);
+
+      // Agar password khali hai to purana wala rakhna hai
+      // Pehle purana password fetch karo
+      let finalHashedPassword;
+
+      if (password && password.trim() !== "") {
+        // Naya password diya — hash karo
+        finalHashedPassword = await bcrypt.hash(password, 10);
+        console.log("New password set");
+      } else {
+        // Password khali — purana fetch karo tagId se
+        const existingRecord = await findRecordByTagId(tagId);
+        finalHashedPassword = existingRecord?.password || "";
+        console.log("Keeping old password");
+      }
 
       result = await shopifyQuery(`
         mutation UpdateMetaobject {
@@ -170,7 +174,7 @@ app.post("/submit-form", async (req, res) => {
               fields: [
                 { key: "name",     value: "${name}" }
                 { key: "email",    value: "${email}" }
-                { key: "password", value: "${hashedPassword}" }
+                { key: "password", value: "${finalHashedPassword}" }
                 { key: "phone",    value: "${phone}" }
                 { key: "address",  value: "${address}" }
                 { key: "pet_name", value: "${petname}" }
@@ -186,6 +190,12 @@ app.post("/submit-form", async (req, res) => {
     } else {
       // ---- CREATE new record ----
       console.log("Creating new metaobject for tagId:", tagId);
+
+      if (!password || password.trim() === "") {
+        return res.status(400).json({ error: "Naye registration ke liye password zaroori hai" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
 
       result = await shopifyQuery(`
         mutation CreateMetaobject {
