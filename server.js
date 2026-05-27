@@ -1,6 +1,3 @@
-
-
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -16,56 +13,58 @@ app.use(express.json());
 
 
 // ======================
-// SUBMIT FORM
+// SHOPIFY GRAPHQL HELPER
 // ======================
-app.post("/submit-form", async (req, res) => {
-  const { tagId, name, email, password, phone, address, petname } = req.body;
+async function shopifyQuery(query) {
+  const response = await fetch(
+    `https://${process.env.SHOPIFY_STORE}/admin/api/2025-01/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ query }),
+    }
+  );
+  return response.json();
+}
 
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const response = await fetch(
-      `https://${process.env.SHOPIFY_STORE}/admin/api/2025-01/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-        },
-        body: JSON.stringify({
-          query: `
-            mutation CreateMetaobject {
-              metaobjectCreate(
-                metaobject: {
-                  type: "contact_form"
-                  fields: [
-                    { key: "tag_id",   value: "${tagId}" }
-                    { key: "name",     value: "${name}" }
-                    { key: "email",    value: "${email}" }
-                    { key: "password", value: "${hashedPassword}" }
-                    { key: "phone",    value: "${phone}" }
-                    { key: "address",  value: "${address}" }
-                    { key: "pet_name", value: "${petname}" }
-                  ]
-                }
-              ) {
-                metaobject { id }
-                userErrors { field message }
-              }
-            }
-          `,
-        }),
+// ======================
+// TAG ID SE RECORD DHUNDO (id bhi return karo)
+// ======================
+async function findRecordByTagId(tagId) {
+  const result = await shopifyQuery(`
+    {
+      metaobjects(type: "contact_form", first: 50) {
+        edges {
+          node {
+            id
+            fields { key value }
+          }
+        }
       }
-    );
+    }
+  `);
 
-    const data = await response.json();
-    res.json(data);
+  const items = result.data.metaobjects.edges;
 
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ error: error.message });
-  }
-});
+  const found = items.find((item) =>
+    item.node.fields.some(
+      (field) => field.key === "tag_id" && field.value === tagId
+    )
+  );
+
+  if (!found) return null;
+
+  const data = { _id: found.node.id };
+  found.node.fields.forEach((field) => {
+    data[field.key] = field.value;
+  });
+
+  return data;
+}
 
 
 // ======================
@@ -83,50 +82,16 @@ app.get("/check-tag/:tagId", async (req, res) => {
   const { tagId } = req.params;
 
   try {
-    const response = await fetch(
-      `https://${process.env.SHOPIFY_STORE}/admin/api/2025-01/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-        },
-        body: JSON.stringify({
-          query: `
-          {
-            metaobjects(type: "contact_form", first: 50) {
-              edges {
-                node {
-                  fields { key value }
-                }
-              }
-            }
-          }
-          `,
-        }),
-      }
-    );
+    const record = await findRecordByTagId(tagId);
 
-    const result = await response.json();
-    const items = result.data.metaobjects.edges;
-
-    const found = items.find((item) =>
-      item.node.fields.some(
-        (field) => field.key === "tag_id" && field.value === tagId
-      )
-    );
-
-    if (found) {
-      const data = {};
-      found.node.fields.forEach((field) => {
-        data[field.key] = field.value;
-      });
-      return res.json({ found: true, data });
+    if (record) {
+      return res.json({ found: true, data: record });
     }
 
     res.json({ found: false });
 
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -144,78 +109,113 @@ app.post("/verify-edit", async (req, res) => {
   }
 
   try {
-    // Shopify se saare records fetch karo
-    const response = await fetch(
-      `https://${process.env.SHOPIFY_STORE}/admin/api/2025-01/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-        },
-        body: JSON.stringify({
-          query: `
-          {
-            metaobjects(type: "contact_form", first: 50) {
-              edges {
-                node {
-                  fields { key value }
-                }
-              }
-            }
-          }
-          `,
-        }),
-      }
-    );
+    const record = await findRecordByTagId(tagId);
 
-    const result = await response.json();
-    const items = result.data.metaobjects.edges;
-
-    // Tag ID se record dhundo
-    const found = items.find((item) =>
-      item.node.fields.some(
-        (field) => field.key === "tag_id" && field.value === tagId
-      )
-    );
-
-    if (!found) {
+    if (!record) {
       return res.json({ success: false, message: "Tag ID nahi mila" });
     }
 
-    // Fields ko flat object mein convert karo
-    const data = {};
-    found.node.fields.forEach((field) => {
-      data[field.key] = field.value;
-    });
-
-    // Email check karo
-    if (data.email !== email) {
+    // Email check
+    if (record.email !== email) {
       return res.json({ success: false, message: "Email ya password galat hai" });
     }
 
-    // Password bcrypt se compare karo (hashed password ke saath plain text compare)
-    const passwordMatch = await bcrypt.compare(password, data.password);
+    // Password bcrypt compare
+    const passwordMatch = await bcrypt.compare(password, record.password);
 
     if (!passwordMatch) {
       return res.json({ success: false, message: "Email ya password galat hai" });
     }
 
-    // Verification successful — password ke bina data bhejo
+    // Success — metaobject ID bhi bhejo taaki update ho sake
     return res.json({
       success: true,
+      metaobjectId: record._id,   // <-- yeh ID frontend save karega
       user: {
-        name: data.name || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        address: data.address || "",
-        pet_name: data.pet_name || "",
+        name: record.name || "",
+        email: record.email || "",
+        phone: record.phone || "",
+        address: record.address || "",
+        pet_name: record.pet_name || "",
       },
     });
 
   } catch (error) {
     console.log(error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// ======================
+// SUBMIT FORM  (create ya update dono handle karta hai)
+// ======================
+app.post("/submit-form", async (req, res) => {
+  const { tagId, name, email, password, phone, address, petname, metaobjectId } = req.body;
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    let result;
+
+    if (metaobjectId) {
+      // ---- UPDATE existing record ----
+      console.log("Updating metaobject:", metaobjectId);
+
+      result = await shopifyQuery(`
+        mutation UpdateMetaobject {
+          metaobjectUpdate(
+            id: "${metaobjectId}"
+            metaobject: {
+              fields: [
+                { key: "name",     value: "${name}" }
+                { key: "email",    value: "${email}" }
+                { key: "password", value: "${hashedPassword}" }
+                { key: "phone",    value: "${phone}" }
+                { key: "address",  value: "${address}" }
+                { key: "pet_name", value: "${petname}" }
+              ]
+            }
+          ) {
+            metaobject { id }
+            userErrors { field message }
+          }
+        }
+      `);
+
+    } else {
+      // ---- CREATE new record ----
+      console.log("Creating new metaobject for tagId:", tagId);
+
+      result = await shopifyQuery(`
+        mutation CreateMetaobject {
+          metaobjectCreate(
+            metaobject: {
+              type: "contact_form"
+              fields: [
+                { key: "tag_id",   value: "${tagId}" }
+                { key: "name",     value: "${name}" }
+                { key: "email",    value: "${email}" }
+                { key: "password", value: "${hashedPassword}" }
+                { key: "phone",    value: "${phone}" }
+                { key: "address",  value: "${address}" }
+                { key: "pet_name", value: "${petname}" }
+              ]
+            }
+          ) {
+            metaobject { id }
+            userErrors { field message }
+          }
+        }
+      `);
+    }
+
+    console.log("Shopify result:", JSON.stringify(result));
+    res.json(result);
+
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
