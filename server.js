@@ -32,7 +32,7 @@ async function shopifyQuery(query) {
 
 
 // ======================
-// TAG ID SE RECORD DHUNDO
+// FIND RECORD BY TAG ID
 // ======================
 async function findRecordByTagId(tagId) {
   const result = await shopifyQuery(`
@@ -100,23 +100,23 @@ app.post("/verify-edit", async (req, res) => {
   const { tagId, email, password } = req.body;
 
   if (!tagId || !email || !password) {
-    return res.status(400).json({ success: false, message: "Saari fields zaroori hain" });
+    return res.status(400).json({ success: false, message: "All fields are required" });
   }
 
   try {
     const record = await findRecordByTagId(tagId);
 
     if (!record) {
-      return res.json({ success: false, message: "Tag ID nahi mila" });
+      return res.json({ success: false, message: "Tag ID not found" });
     }
 
     if (record.email !== email) {
-      return res.json({ success: false, message: "Email ya password galat hai" });
+      return res.json({ success: false, message: "Invalid email or password" });
     }
 
     const passwordMatch = await bcrypt.compare(password, record.password);
     if (!passwordMatch) {
-      return res.json({ success: false, message: "Email ya password galat hai" });
+      return res.json({ success: false, message: "Invalid email or password" });
     }
 
     return res.json({
@@ -151,16 +151,14 @@ app.post("/submit-form", async (req, res) => {
       // ---- UPDATE existing record ----
       console.log("Updating metaobject:", metaobjectId);
 
-      // Agar password khali hai to purana wala rakhna hai
-      // Pehle purana password fetch karo
       let finalHashedPassword;
 
       if (password && password.trim() !== "") {
-        // Naya password diya — hash karo
+        // New password provided — hash it
         finalHashedPassword = await bcrypt.hash(password, 10);
         console.log("New password set");
       } else {
-        // Password khali — purana fetch karo tagId se
+        // Password empty — keep old password
         const existingRecord = await findRecordByTagId(tagId);
         finalHashedPassword = existingRecord?.password || "";
         console.log("Keeping old password");
@@ -192,7 +190,7 @@ app.post("/submit-form", async (req, res) => {
       console.log("Creating new metaobject for tagId:", tagId);
 
       if (!password || password.trim() === "") {
-        return res.status(400).json({ error: "Naye registration ke liye password zaroori hai" });
+        return res.status(400).json({ error: "Password is required for new registration" });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
